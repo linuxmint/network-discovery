@@ -18,8 +18,8 @@ PATH=/sbin:/usr/sbin:/bin:/usr/bin
 DESC="Sonar service"
 NAME=sonar
 DAEMON=/usr/sbin/$NAME
-DAEMON_ARGS="--options args"
-PIDFILE=/var/run/$NAME.pid
+DAEMON_ARGS="--fork"
+PIDFILE=/var/run/network-discovery/$NAME.pid
 SCRIPTNAME=/etc/init.d/$NAME
 
 # Exit if the package is not installed
