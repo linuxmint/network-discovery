@@ -3,11 +3,42 @@
 import socket
 import time
 import os
+import os.path
 import commands
+import sys
+import signal
 
+# Global definitions
 SONAR_PORT = 7777
 LOG_DIR = "/var/network"
+PID_DIR = "/var/run/network-discovery/"
+PID_FILE = "/var/run/network-discovery/pulsar.pid"
 
+def do_start():
+	''' Make sure pulsar isn't running, otherwise write pid to file at startup '''
+	if os.path.exists(PID_FILE):
+		print "Pulsar appears to be running already, aborting!"
+		sys.exit(1)
+		
+	try:
+		pid = os.getpid()
+		f = open(PID_FILE, "w")
+		f.writelines("%d\n" % pid)
+		f.close()
+	except Exception, e:
+		print "Could not write process ID to %s, aborting!" % PID_FILE
+		sys.exit(2)
+		
+def signal_callback(signal, frame):
+	''' Ensure that we still remove pid on SIGINT '''
+	do_stop()
+	
+def do_stop():
+	''' Cleanly shut down, i.e. remove PID_FILE '''
+	os.remove(PID_FILE)
+	sys.exit(0)
+
+	
 def pulse(hostname):
     try:
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -34,10 +65,29 @@ def pulse(hostname):
         print detail
         os.system("echo \"%(error)s\" > %(log_dir)s/last_pulse" % {'error':detail, 'log_dir':LOG_DIR})
 
+def main_run_loop():
+	do_start()
+	while True:
+		pulse(hostname)
+		time.sleep(1)
+       
 if __name__ == '__main__':
+    ''' Main entry method '''
+    # Register a signal handler, we're interested in SIGINT
+    signal.signal(signal.SIGINT, signal_callback)
+	
     os.system("mkdir -p %s" % LOG_DIR)
+    if not os.path.exists(PID_DIR):
+		# make pid dir
+		os.makedirs(PID_DIR)
     hostname = commands.getoutput("hostname")
-    while True:
-       pulse(hostname)
-       time.sleep(1)
+    
+    if "--fork" in sys.argv:
+		# Command line request to fork
+		pid = os.fork()
+		if not pid:
+			main_run_loop()
+    else:
+		main_run_loop()
 
+    sys.exit(0)
