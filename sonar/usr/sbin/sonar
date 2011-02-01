@@ -1,0 +1,106 @@
+#!/usr/bin/python
+
+import socket
+import time
+import os
+import threading
+
+SONAR_PORT = 7777
+LOG_DIR = "/var/network"
+
+CHECK_PERIOD = 1
+CHECK_TIMEOUT = 3
+
+class Host():
+    def __init__(self, ipTime, ip, data):
+        self.ipTime = ipTime
+        self.ip = ip
+        self.data = data
+
+class Heartbeats(dict):
+    """Manage shared heartbeats dictionary with thread locking"""
+
+    def __init__(self):
+        super(Heartbeats, self).__init__()
+        self._lock = threading.Lock()
+
+    def __setitem__(self, key, value):
+        """Create or update the dictionary entry for a client"""
+        self._lock.acquire()
+        super(Heartbeats, self).__setitem__(key, value)       
+        self._lock.release()
+
+    def getActiveHosts(self):
+        """Return a list of clients with heartbeat more recent than CHECK_TIMEOUT"""
+        limit = time.time() - CHECK_TIMEOUT
+        self._lock.acquire() 
+        hosts = []
+        try:
+            for (ip, host) in self.items():
+                if host.ipTime > limit:
+                    hosts.append(host)
+        except Exception, detail:
+            print detail
+        self._lock.release()
+        return hosts
+
+class Receiver(threading.Thread):
+    """Receive UDP packets and log them in the heartbeats dictionary"""
+
+    def __init__(self, goOnEvent, heartbeats):
+        super(Receiver, self).__init__()
+        self.goOnEvent = goOnEvent
+        self.heartbeats = heartbeats        
+        self.connect()
+
+    def connect(self):        
+        os.system("echo \"Connecting\" > %(log_dir)s/sonar_status" % {'log_dir':LOG_DIR})
+        self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, True)
+        self.sock.settimeout(CHECK_TIMEOUT)
+        self.sock.bind(("", SONAR_PORT))
+
+    def run(self):
+        while self.goOnEvent.isSet():
+            try:
+                data, addr = self.sock.recvfrom(0x100)
+                ip = addr[0]
+                os.system("echo \"Receiving\" > %(log_dir)s/sonar_status" % {'log_dir':LOG_DIR})
+                print "received from {0}: {1!r}".format(addr, data)
+                if data.startswith('SIGNAL_NETWORK_PULSE'):                    
+                    self.heartbeats[ip] = Host(time.time(), ip, data)
+            except socket.timeout:
+                pass
+            except Exception, detail:
+                os.system("echo \"%(error)s\" > %(log_dir)s/sonar_status" % {'error':detail, 'log_dir':LOG_DIR})
+                time.sleep(1)
+                self.connect()
+
+
+if __name__ == '__main__':
+    try:
+        os.system("mkdir -p %s" % LOG_DIR)
+        receiverEvent = threading.Event()
+        receiverEvent.set()
+        heartbeats = Heartbeats()
+        receiver = Receiver(goOnEvent = receiverEvent, heartbeats = heartbeats)
+        receiver.start()    
+        try:
+            last_known_active_hosts = ""
+            while True:
+                hosts = heartbeats.getActiveHosts()                
+                active_hosts = ""
+                for host in hosts:                      
+                    active_hosts = active_hosts + host.ip + '###' + host.data + '\n'                                    
+                if active_hosts != last_known_active_hosts:
+                    last_known_active_hosts = active_hosts
+                    outfile=open('%s/active_hosts' % LOG_DIR,'w')
+                    outfile.write(active_hosts)
+                    outfile.close()
+                time.sleep(CHECK_PERIOD)
+        except KeyboardInterrupt:        
+            receiverEvent.clear()
+            receiver.join()
+    except Exception, detail:
+        os.system("echo \"%(error)s\" > %(log_dir)s/sonar_status" % {'error':detail, 'log_dir':LOG_DIR})
+

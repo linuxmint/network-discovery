@@ -1,0 +1,29 @@
+import os
+from pyinotify import WatchManager, Notifier, ThreadedNotifier, EventsCodes, ProcessEvent
+import pyinotify
+
+wm = WatchManager()
+
+mask = pyinotify.IN_DELETE | pyinotify.IN_CREATE | pyinotify.IN_MODIFY
+
+class PTmp(ProcessEvent):
+    def process_IN_CREATE(self, event):
+        print "Create: %s" %  os.path.join(event.path, event.name)
+
+    def process_IN_DELETE(self, event):
+        print "Remove: %s" %  os.path.join(event.path, event.name)
+
+notifier = Notifier(wm, PTmp())
+wdd = wm.add_watch('/home/clem/Network', mask, rec=True, auto_add=True)
+while True:  # loop forever
+    try:
+        # process the queue of events as explained above
+        notifier.process_events()
+        if notifier.check_events():
+            # read notified events and enqeue them
+            notifier.read_events()
+        # you can do some tasks here...
+    except KeyboardInterrupt:
+        # destroy the inotify's instance on this interrupt (stop monitoring)
+        notifier.stop()
+        break

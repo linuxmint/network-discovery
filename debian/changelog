@@ -1,0 +1,6 @@
+network-sync (1.1.2) julia; urgency=low
+
+  * Initial release
+
+ -- Clement Lefebvre <root@linuxmint.com>  Wed,  26 Jan 2011 21:33:00 +0000
+

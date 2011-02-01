@@ -1,0 +1,43 @@
+#!/usr/bin/python
+
+import socket
+import time
+import os
+import commands
+
+SONAR_PORT = 7777
+LOG_DIR = "/var/network"
+
+def pulse(hostname):
+    try:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, True)
+        sock.bind(("", 0)) # Use any port to send
+        while True:
+            # logged-in users
+            logged_users = commands.getoutput("who | grep tty | awk {'print $1;'}").replace("\n", ",")                                       
+                
+            # identified users
+            identities = commands.getoutput("find /home/*/.network-cloud/identity")
+            str_identities = ""
+            for identity in identities.split("\n"):
+                user = identity.split("/")[2]
+                cloudlogin = commands.getoutput("cat /home/%s/.network-cloud/identity | grep login | awk {'print $2;'}" % user)  
+                storemd5 = commands.getoutput("cat /home/%s/.network-cloud/identity | grep storemd5 | awk {'print $2;'}" % user) 
+                str_identities = str_identities + user + "=" + cloudlogin + "=" + storemd5 + "," 
+            if str_identities[-1] == ",":
+                str_identities = str_identities[:-1]
+            sock.sendto("SIGNAL_NETWORK_PULSE###%(hostname)s###%(users)s###%(identities)s" % {'hostname':hostname, 'users':logged_users, 'identities':str_identities}, ("255.255.255.255", SONAR_PORT))            
+            os.system("echo `date` > %s/last_pulse" % LOG_DIR)
+            time.sleep(1)
+    except Exception, detail:
+        print detail
+        os.system("echo \"%(error)s\" > %(log_dir)s/last_pulse" % {'error':detail, 'log_dir':LOG_DIR})
+
+if __name__ == '__main__':
+    os.system("mkdir -p %s" % LOG_DIR)
+    hostname = commands.getoutput("hostname")
+    while True:
+       pulse(hostname)
+       time.sleep(1)
+

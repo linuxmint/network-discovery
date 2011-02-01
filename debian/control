@@ -1,0 +1,18 @@
+Source: network-sync
+Section: admin
+Priority: optional
+Maintainer: Clement Lefebvre <root@linuxmint.com>
+Build-Depends: debhelper (>= 5)
+Standards-Version: 3.7.2
+
+Package: pulsar
+Architecture: all
+Depends: python
+Description: Emits a heartbeat on the local network
+ Pulsar sends a UDP broadcast message to let other computers know the system is up and running
+
+Package: sonar
+Architecture: all
+Depends: python
+Description: Listens to heartbeats on the local network
+ Sonar listens to heartbeats on the local network and maintains a representation of the network in /var/network
